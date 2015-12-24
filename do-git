@@ -1,0 +1,138 @@
+#!/bin/bash
+
+WORKSPACE=$(pwd)
+COMMIT_TIME=$(date +"%m-%d-%Y-%H:%M")
+COMMIT_MSG="Updated-$COMMIT_TIME"
+
+is_git=0
+
+if type "git" > /dev/null 2>&1 ; then
+	is_git=1
+#    	git --version
+fi
+
+function run_cmd()
+{
+	$@ > $WORKSPACE/run-update.log 2>&1
+	ret=$?
+	if [ "$ret" -eq "0" ]
+	then
+		echo "Excuted $@ ..."
+	else
+		echo "Error in excuting $@ ..."
+		cat $WORKSPACE/run-update.log
+		exit $ret
+	fi
+}
+
+function git_commit()
+{
+	if [ "$is_git" -eq 1 ]
+	then
+		for temp_file in $(git diff --name-only)
+		do
+			echo "Commiting $temp_file in git ..."
+			run_cmd git add $temp_file
+			run_cmd git commit $temp_file -m"$COMMIT_MSG"
+		done
+	else
+		exit 1
+	fi		
+}
+
+function git_addf()
+{
+        if [ "$is_git" -eq 1 ]
+        then
+		temp_file="$1"
+                if [ -f "$temp_file" ]
+                then
+                        echo "Adding $temp_file ..."
+                        run_cmd git add "$temp_file"
+                        run_cmd git commit "$temp_file" -m"$COMMIT_MSG"
+                else
+			echo "Unable to find the $temp_file file .."
+		fi
+        else
+                exit 1
+        fi
+}
+
+function check_ingnore()
+{
+	temp_file="$1"
+        while true; do
+                read -p "Do you wish to ignore $temp_file permanently?" yn
+                case $yn in
+                        [Yy]* ) add_ingnore "$temp_file"; break;;
+                        [Nn]* ) echo "Skiping $temp_file"; break;;
+                        * ) echo "Please answer yes or no.";;
+                esac
+        done
+}
+
+function add_ingnore()
+{
+	temp_file="$1"
+	echo "Adding $temp_file to ingnore ..."
+	if [ -f $WORKSPACE/.gitignore ]
+	then
+		echo "$temp_file" >> $WORKSPACE/.gitignore
+	else
+		echo "# Added by script - add other file before this." >> $WORKSPACE/.gitignore
+		echo "$temp_file" >> $WORKSPACE/.gitignore
+	fi
+}
+
+function add_new()
+{
+	temp_file="$1"
+        while true; do
+                read -p "Do you wish to add $temp_file to repo?" yn
+                case $yn in
+                        [Yy]* ) git_addf "$temp_file"; break;;
+                        [Nn]* ) check_ingnore "$temp_file"; break;;
+                        * ) echo "Please answer yes or no.";;
+                esac
+        done
+}
+
+function check_new()
+{
+	IFS=$'\n'
+	for temp_file in $(git ls-files --others --exclude-standard)
+	do
+	        if [ -f $WORKSPACE/.gitignore ]
+	        then
+			isFile=$(cat $WORKSPACE/.gitignore | grep -v "^ *\(#.*\|\)$" | grep "$temp_file" | wc -l)
+        	else
+                	echo "# Added by script - add other file before this." >> $WORKSPACE/.gitignore
+                	echo "$temp_file" >> $WORKSPACE/.gitignore
+			isFile="0"
+        	fi
+		if [ "$isFile" -eq "0" ]
+		then
+			add_new "$temp_file"
+		else
+			echo "This file $temp_file in ignore - If like to add edit .gitignore file ..."
+		fi
+	done
+	unset IFS
+}
+
+function git_push()
+{
+        if [ "$is_git" -eq 1 ]
+        then
+		echo "Pusing chnages to git ..."
+                run_cmd git push
+        else
+                exit 1
+        fi
+}
+
+### MAIN ###
+check_new
+git_commit
+git_push
+
